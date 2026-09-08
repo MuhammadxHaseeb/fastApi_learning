@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Request 
 from mockData import products
+from dtos import ProductDTO
+
 
 app = FastAPI()
 
@@ -43,3 +45,52 @@ def greet_user(request:Request):
     return {
         "greet": f"Hello {query_params.get("name")}, Your age is {query_params.get("age")}"
     }
+
+
+## Different Types of HTTP METHODS
+
+# 2. post
+# Types of Post Ways: body, headers, query_params
+
+@app.post("/create_product")
+def create_product(product_data:ProductDTO):
+    
+    print(product_data)
+    product_data = product_data.model_dump()
+    print(product_data)
+    products.append(product_data)
+
+    return {"status":"Product Created Successfully...","New Data":products}
+
+
+
+# 3. put
+@app.put("/update_product/{product_id}")
+def update_product(product_data:ProductDTO, product_id:int):
+
+    for index,x in enumerate(products):
+        if x.get("id") == product_id:
+            products[index] = product_data.model_dump()
+            return {"status":"Product Updated Successfully...","New Data":products}
+            
+    return {
+        "error": "Product Not Found for this ID"
+    }
+
+
+# 1. delete
+@app.delete("/delete_product/{product_id}")
+def delete_product(product_id:int):
+
+    for index, x in enumerate(products):
+        if x.get("id") == product_id:
+            delete_product = products.pop(index)
+            return {
+                "status":"Product Removed Successfully...",
+                "New Data":products
+            }
+
+    return {
+        "error": "Product Not Found for this ID"
+    }
+            
