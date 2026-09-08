@@ -1,3 +1,14 @@
-import fastapi
+from fastapi import FastAPI
 
-print(fastapi.__version__)
+app = FastAPI()
+
+
+# run: fastapi dev main.py
+
+@app.get("/")
+def home():
+    return "Welcome to Fastapi Series !"
+
+@app.get("/connect")
+def contact():
+    return "Connect any time"
