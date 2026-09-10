@@ -1,0 +1,89 @@
+The 5 steps
+1. Model — the table (model.py)
+What the row looks like in Postgres. Write this once per table, not once per endpoint.
+
+
+from sqlalchemy import Column, Integer, String, Boolean
+from src.utils.db import Base
+
+class TaskModel(Base):
+    __tablename__ = "user_tasks"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String)
+    description = Column(String)
+    is_completed = Column(Boolean, default=False)
+Rule: exactly one primary key, and this file must be imported somewhere before create_all() runs, or the table never gets built.
+
+2. DTO — the request/response shape (dtos.py)
+What the client sends and receives. Pydantic, not SQLAlchemy. This is deliberately a separate class from the model.
+
+
+from pydantic import BaseModel
+
+class TaskSchema(BaseModel):
+    title: str
+    description: str
+    is_completed: bool = False
+Why two classes for the same thing? Because they differ. The client must not send id — the database assigns it. Later you'll add created_at, or a password you accept but never return. One DTO per direction as needed: TaskCreate for input, TaskOut for output.
+
+3. Controller — the logic (controller.py)
+Takes a session, talks to the DB, returns data. No FastAPI imports in this file — that's what makes it testable on its own.
+
+
+from sqlalchemy.orm import Session
+from src.tasks.dtos import TaskSchema
+from src.tasks.model import TaskModel
+
+def create_task(body: TaskSchema, db: Session):
+    new_task = TaskModel(**body.model_dump())
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)      # pulls the DB-assigned id back
+    return new_task
+The three-line rhythm is always the same: add → commit → refresh.
+
+4. Router — the URL (router.py)
+Maps an HTTP path to the controller. Thin — no logic here.
+
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from src.tasks import controller
+from src.tasks.dtos import TaskSchema
+from src.utils.db import get_db
+
+task_routes = APIRouter(prefix="/tasks", tags=["Tasks"])
+
+@task_routes.post("/")
+def create_task(body: TaskSchema, db: Session = Depends(get_db)):
+    return controller.create_task(body, db)
+Depends(get_db) is the whole database connection story. FastAPI calls your get_db generator, hands the session in, and closes it after the response — that's what the try/finally in db.py is for. You never open or close a session yourself.
+
+5. Register — once per package (main.py)
+
+from src.tasks.model import TaskModel   # so create_all() sees the table
+Base.metadata.create_all(engine)
+app.include_router(task_routes)
+Adding a second endpoint to an existing table
+Steps 1 and 5 are already done. You only touch controller + router:
+
+
+# controller.py
+def get_tasks(db: Session):
+    return db.query(TaskModel).all()
+
+# router.py
+@task_routes.get("/")
+def get_tasks(db: Session = Depends(get_db)):
+    return controller.get_tasks(db)
+That's the pattern for the rest of your CRUD.
+
+The checks that would have caught every bug you hit
+Before running, scan for these four — they're the exact shapes of the errors from today:
+
+Capitalization — class not Class, False not false, primary_key not primary_Key, Session not session.
+Subscripts — data['x'], never a bare ['x'].
+One name per table — never two __tablename__ with the same value (your src/user/ still violates this).
+Model imported before create_all — otherwise the table silently isn't created.
+Want me to save this as a reference page you can keep open while you code? I can also do the two cleanups still pending — deleting the duplicate src/user/ and adding the model import to main.py.
